@@ -8,7 +8,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 # Include directories
 include_directories(include)
-include_directories("${CMAKE_INCLUDE_PATH}")
 
 # Add library
 add_library(lib STATIC src/lib.cpp)
