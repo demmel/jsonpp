@@ -24,3 +24,7 @@ cmake --build --preset conan-release .\build\
 ```
 
 ## Running Tests
+
+```
+ctest --preset conan-release
+```
