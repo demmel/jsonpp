@@ -1,6 +1,6 @@
 #include "lib.hpp"
 
-int add(int a, int b)
+JsonValue JsonValue::parse(std::string &json_str)
 {
-    return a + b;
+    return JsonValue();
 }
