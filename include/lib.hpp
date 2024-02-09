@@ -6,7 +6,7 @@
 #include <string>
 #include <optional>
 
-struct JsonValue;
+class JsonValue;
 
 /**
  * Represents all possible valid JSON objects.
@@ -45,8 +45,9 @@ public:
 
     JsonValue(double v) : m_value(v) {}
     JsonValue(bool v) : m_value(v) {}
+    JsonValue(std::nullptr_t) {}
 
-    JsonValue() = default;
+    JsonValue() = delete;
 
     /**
      * Retrieve a reference to the inner value if it exists.
@@ -72,7 +73,7 @@ public:
      * @param json_str std::string containing valid JSON.
      * @return JsonValue containing that parsed JSON from json_str.
      */
-    static JsonValue parse(const std::string &json_str);
+    static JsonValue parse(const std::string_view json_str);
 
 private:
     std::optional<JsonValueVariant> m_value;

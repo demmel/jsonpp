@@ -77,7 +77,7 @@ void assert_value_eq(const JsonValue &actual, const JsonValue &expected)
 
 TEST(LibTest, ParseNull)
 {
-    assert_value_eq(JsonValue::parse(std::string("null")), JsonValue());
+    assert_value_eq(JsonValue::parse(std::string("null")), JsonValue(nullptr));
 };
 
 TEST(LibTest, ParseTrue)
