@@ -1,31 +1,59 @@
 #include "lib.hpp"
 
+#include <variant>
+#include <unordered_map>
+#include <vector>
+#include <string>
+#include <optional>
 #include <stdexcept>
+#include <algorithm>
+#include <iterator>
+
+std::string join(std::vector<std::string> &elems, char delimiter)
+{
+
+    size_t needed = elems.size() - 1; // For the delimiters
+    for (auto &e : elems)
+    {
+        needed += e.size(); // For each string
+    }
+
+    std::string s;
+    s.reserve(needed);
+
+    for (size_t i = 0; i < elems.size(); ++i)
+    {
+        auto e = elems[i];
+        s.append(e);
+        if (i != elems.size() - 1)
+        {
+            s.push_back(delimiter);
+        }
+    }
+
+    return s;
+}
 
 std::string ToJsonVisitor::operator()(const JsonObject &o) const
 {
-    std::string buf = "{";
-    for (auto &[k, v] : o)
-    {
-        buf.append(k);
-        buf.push_back(':');
-        buf.append(v.json());
-        buf.push_back(',');
-    }
-    buf.push_back('}');
-    return buf;
+    auto strs = std::vector<std::string>();
+    strs.reserve(o.size());
+
+    std::transform(o.begin(), o.end(), std::back_inserter(strs), [](auto kv)
+                   { return kv.first + ":" + kv.second.json(); });
+
+    return "{" + join(strs, ',') + "}";
 }
 
 std::string ToJsonVisitor::operator()(const JsonArray &a) const
 {
-    std::string buf = "[";
-    for (auto &v : a)
-    {
-        buf.append(v.json());
-        buf.push_back(',');
-    }
-    buf.push_back(']');
-    return buf;
+    auto strs = std::vector<std::string>();
+    strs.reserve(a.size());
+
+    std::transform(a.begin(), a.end(), std::back_inserter(strs), [](auto elem)
+                   { return elem.json(); });
+
+    return "[" + join(strs, ',') + "]";
 }
 
 std::string ToJsonVisitor::operator()(const std::string &s) const
