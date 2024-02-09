@@ -227,6 +227,36 @@ using State = std::variant<StateValue,
                            StateObject,
                            StateNull>;
 
+template <std::size_t I, typename... Ts>
+constexpr std::optional<std::variant<Ts...>> tryCreateStateHelper(char c);
+
+template <typename... Ts>
+constexpr std::optional<std::variant<Ts...>> tryCreateState(char c)
+{
+    return tryCreateStateHelper<0, Ts...>(c);
+}
+
+template <std::size_t I, typename... Ts>
+constexpr std::optional<std::variant<Ts...>> tryCreateStateHelper(char c)
+{
+    if constexpr (I < sizeof...(Ts))
+    {
+        using T = std::tuple_element_t<I, std::tuple<Ts...>>;
+        if (auto state = T::create_if_valid_start(c))
+        {
+            return state;
+        }
+        else
+        {
+            return tryCreateStateHelper<I + 1, Ts...>(c);
+        }
+    }
+    else
+    {
+        return std::nullopt;
+    }
+}
+
 struct Noop
 {
 };
@@ -257,39 +287,12 @@ struct StateCharVisitor
             return Pop{state.value.value()};
         }
 
-        if (auto new_state = StateNumber::create_if_valid_start(c))
+        if (auto new_state = tryCreateState<
+                StateString, StateNumber, StateTrue, StateFalse, StateNull, StateObject, StateArray>(c))
         {
-            return Push{State{new_state.value()}};
-        }
-
-        if (auto new_state = StateTrue::create_if_valid_start(c))
-        {
-            return Push{State{new_state.value()}};
-        }
-
-        if (auto new_state = StateFalse::create_if_valid_start(c))
-        {
-            return Push{State{new_state.value()}};
-        }
-
-        if (auto new_state = StateString::create_if_valid_start(c))
-        {
-            return Push{State{new_state.value()}};
-        }
-
-        if (auto new_state = StateArray::create_if_valid_start(c))
-        {
-            return Push{State{new_state.value()}};
-        }
-
-        if (auto new_state = StateObject::create_if_valid_start(c))
-        {
-            return Push{State{new_state.value()}};
-        }
-
-        if (auto new_state = StateNull::create_if_valid_start(c))
-        {
-            return Push{State{new_state.value()}};
+            return Push{State{std::visit([](auto &&s)
+                                         { return State{s}; },
+                                         new_state.value())}};
         }
 
         throw std::runtime_error("Invalid JSON value");
