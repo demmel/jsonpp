@@ -1,9 +1,6 @@
 #include "lib.hpp"
 
 #include <stdexcept>
-#include <memory>
-#include <sstream>
-#include <iostream>
 
 // Define a helper type to combine all lambdas into a single visitable type
 template <class... Ts>
@@ -108,10 +105,10 @@ struct StateString
         {
             return std::nullopt;
         }
-        return StateString{std::make_shared<std::stringbuf>()};
+        return StateString{std::string()};
     }
 
-    std::shared_ptr<std::stringbuf> s;
+    std::string s;
 };
 
 struct StateArray
@@ -177,6 +174,7 @@ struct Push
 struct Pop
 {
     JsonValue value;
+    bool redo = true;
 };
 
 using StateOp = std::variant<Noop, Push, Pop>;
@@ -206,11 +204,6 @@ struct StateCharVisitor
         }
 
         if (auto new_state = StateFalse::create_if_valid_start(c))
-        {
-            return Push{State{new_state.value()}};
-        }
-
-        if (auto new_state = StateString::create_if_valid_start(c))
         {
             return Push{State{new_state.value()}};
         }
@@ -381,7 +374,40 @@ struct StateCharVisitor
         return Noop{};
     }
 
-    StateOp operator()(const StateString &state) const { return Noop{}; }
+    StateOp operator()(StateString &state) const
+    {
+        if (state.s.back() == '\\')
+        {
+            if (!(c == '"' || c == '\\' || c == '/' || c == 'b' || c == 'f' || c == 'n' || c == 'r' || c == 't' || c == 'u'))
+            {
+                throw std::runtime_error("Invalid escape sequence in JSON string");
+            }
+        }
+        else
+        {
+            auto start_pos = state.s.size() - 6;
+            if (start_pos < 0)
+            {
+                start_pos = 0;
+            }
+            auto unicode_escaoe = state.s.find("\\u", start_pos);
+            if (unicode_escaoe != std::string::npos && unicode_escaoe >= state.s.size() - 6)
+            {
+                if (!std::isxdigit(this->c))
+                {
+                    throw std::runtime_error("Invalid hex digit in unicode escaped sequence in JSON string");
+                }
+            }
+            else if (this->c == '"')
+            {
+                return Pop{JsonValue(state.s), false};
+            }
+        }
+
+        state.s.push_back(this->c);
+
+        return Noop{};
+    }
 
     StateOp operator()(const StateArray &state) const { return Noop{}; }
 
@@ -518,7 +544,7 @@ struct StateOpVisitor
 
         std::visit(StatePopOpVisitor{op.value}, states.back());
 
-        return true;
+        return op.redo;
     }
 
     std::vector<State> &states;

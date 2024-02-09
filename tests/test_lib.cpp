@@ -1,5 +1,28 @@
 #include "gtest/gtest.h"
+
 #include "lib.hpp"
+
+template <typename T>
+constexpr auto type_name()
+{
+    std::string_view name, prefix, suffix;
+#ifdef __clang__
+    name = __PRETTY_FUNCTION__;
+    prefix = "auto type_name() [T = ";
+    suffix = "]";
+#elif defined(__GNUC__)
+    name = __PRETTY_FUNCTION__;
+    prefix = "constexpr auto type_name() [with T = ";
+    suffix = "]";
+#elif defined(_MSC_VER)
+    name = __FUNCSIG__;
+    prefix = "auto __cdecl type_name<";
+    suffix = ">(void)";
+#endif
+    name.remove_prefix(prefix.size());
+    name.remove_suffix(suffix.size());
+    return name;
+}
 
 void assert_value_eq(const JsonValue &actual, const JsonValue &expected);
 
@@ -43,7 +66,7 @@ struct Visitor
     template <typename T, typename U>
     void operator()(const T &actual, const U &expected) const
     {
-        FAIL() << "Actual has different type than expected";
+        FAIL() << "Actual (" << type_name<T>() << ") has different type than expected (" << type_name<U>() << ")";
     }
 };
 
@@ -97,7 +120,7 @@ TEST(LibTest, ParseNumber)
 
 TEST(LibTest, ParseString)
 {
-    assert_value_eq(JsonValue::parse(std::string("\"Hello, world!\"")), JsonValue("Hello, world!"));
+    assert_value_eq(JsonValue::parse(std::string("\"Hello, world!\"")), JsonValue(std::string("Hello, world!")));
 };
 
 TEST(LibTest, ParseEmptyArray)
@@ -117,6 +140,6 @@ TEST(LibTest, ParseStressTest)
                                 \
                             \"d\": [1,2,3]    \
                             }")),
-                    JsonValue({"a", JsonValue({"b", JsonValue(123.), "c", JsonValue("asd")}),
-                               "d", JsonValue({JsonValue(1.), JsonValue(2.), JsonValue(3.)})}));
+                    JsonValue({std::string("a"), JsonValue({std::string("b"), JsonValue(123.), std::string("c"), JsonValue(std::string("asd"))}),
+                               std::string("d"), JsonValue({JsonValue(1.), JsonValue(2.), JsonValue(3.)})}));
 };

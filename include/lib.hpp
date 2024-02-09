@@ -44,8 +44,11 @@ public:
     JsonValue(std::string &&v) : m_value(std::move(v)) {}
 
     JsonValue(double v) : m_value(v) {}
-    JsonValue(bool v) : m_value(v) {}
+    explicit JsonValue(bool v) : m_value(v) {}
     JsonValue(std::nullptr_t) {}
+
+    template <typename T>
+    JsonValue(T *) = delete;
 
     JsonValue() = delete;
 
