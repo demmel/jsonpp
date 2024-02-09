@@ -8,8 +8,19 @@
 
 struct JsonValue;
 
+/**
+ * Represents all possible valid JSON objects.
+ */
 using JsonObject = std::unordered_map<std::string, JsonValue>;
+
+/**
+ * Represents all possible valid JSON arrays.
+ */
 using JsonArray = std::vector<JsonValue>;
+
+/**
+ * Represents all possible valid non-null JSON values.
+ */
 using JsonValueVariant = std::variant<
     JsonObject,
     JsonArray,
@@ -17,6 +28,9 @@ using JsonValueVariant = std::variant<
     double,
     bool>;
 
+/**
+ * Represents all possible valid JSON values.
+ */
 class JsonValue
 {
 public:
@@ -34,16 +48,30 @@ public:
 
     JsonValue() = default;
 
+    /**
+     * Retrieve a reference to the inner value if it exists.
+     *
+     * WARNING: Do not use this reference beyond the lifetime of the JsonValue containing it.
+     * If you want an owned version, copy the value.
+     *
+     * @return a reference to the inner value if it exists.
+     */
     std::optional<std::reference_wrapper<const JsonValueVariant>> value() const
     {
         if (!this->m_value)
-    {
+        {
             return std::nullopt;
         }
 
         return std::cref(*this->m_value);
     }
 
+    /**
+     * Creates a JsonValue from a string containing valid JSON.
+     *
+     * @param json_str std::string containing valid JSON.
+     * @return JsonValue containing that parsed JSON from json_str.
+     */
     static JsonValue parse(const std::string &json_str);
 
 private:
