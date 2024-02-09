@@ -122,6 +122,7 @@ struct StateArray
         return StateArray{};
     }
 
+    bool need_comma;
     JsonArray values;
 };
 
@@ -136,6 +137,7 @@ struct StateObject
         return StateObject{};
     }
 
+    std::optional<std::string> current_key;
     JsonObject values;
 };
 
@@ -170,6 +172,7 @@ struct Noop
 struct Push
 {
     State state;
+    bool redo = false;
 };
 struct Pop
 {
@@ -409,9 +412,36 @@ struct StateCharVisitor
         return Noop{};
     }
 
-    StateOp operator()(const StateArray &state) const { return Noop{}; }
+    StateOp operator()(StateArray &state) const
+    {
+        if (std::isspace(this->c))
+        {
+            return Noop{};
+        }
+        else if (this->c == ']')
+        {
+            return Pop{JsonValue(state.values), false};
+        }
+        else if (state.need_comma)
+        {
+            if (this->c != ',')
+            {
+                throw std::runtime_error("Expected comma");
+            }
+            state.need_comma = false;
+            return Noop{};
+        }
+        else
+        {
+            return Push{
+                StateValue{}};
+        }
+    }
 
-    StateOp operator()(const StateObject &state) const { return Noop{}; }
+    StateOp operator()(const StateObject &state) const
+    {
+        return Noop{};
+    }
 
     StateOp operator()(StateNull &state) const
     {
@@ -474,17 +504,17 @@ struct StateTerminateVisitor
         return JsonValue(false);
     }
 
-    JsonValue operator()(const StateString &state) const
+    JsonValue operator()(const StateString &) const
     {
         throw std::runtime_error("Unexpected end of input in JSON string");
     }
 
-    JsonValue operator()(const StateArray &state) const
+    JsonValue operator()(const StateArray &) const
     {
         throw std::runtime_error("Unexpected end of input in JSON array");
     }
 
-    JsonValue operator()(const StateObject &state) const
+    JsonValue operator()(const StateObject &) const
     {
         throw std::runtime_error("Unexpected end of input in JSON object");
     }
@@ -507,7 +537,11 @@ struct StatePopOpVisitor
         state.value = this->value;
     }
 
-    void operator()(StateArray &state) {}
+    void operator()(StateArray &state)
+    {
+        state.values.push_back(this->value);
+        state.need_comma = true;
+    }
 
     void operator()(StateObject &state) {}
 
@@ -522,7 +556,7 @@ struct StatePopOpVisitor
 
 struct StateOpVisitor
 {
-    bool operator()(const Noop &op) const
+    bool operator()(const Noop &) const
     {
         return false;
     }
@@ -530,7 +564,7 @@ struct StateOpVisitor
     bool operator()(const Push &op) const
     {
         states.push_back(op.state);
-        return false;
+        return op.redo;
     }
 
     bool operator()(const Pop &op) const
