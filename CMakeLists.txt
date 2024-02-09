@@ -6,13 +6,11 @@ project(json++ VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-
-
-# Include directories
-include_directories(include)
-
 # Add library
-add_library(lib STATIC src/lib.cpp)
+file(GLOB LIB_SOURCES "src/*.cpp")
+add_library(lib STATIC ${LIB_SOURCES})
+target_include_directories(lib PUBLIC include)
+target_include_directories(lib PRIVATE include/internal)
 
 if(MSVC)
   target_compile_options(lib PRIVATE /W4)
