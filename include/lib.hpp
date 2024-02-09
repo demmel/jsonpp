@@ -10,12 +10,12 @@ struct JsonValue;
 
 using JsonObject = std::unordered_map<std::string, JsonValue>;
 using JsonArray = std::vector<JsonValue>;
-using JsonValueVariant = std::optional<std::variant<
+using JsonValueVariant = std::variant<
     JsonObject,
     JsonArray,
     std::string,
     double,
-    bool>>;
+    bool>;
 
 class JsonValue
 {
@@ -34,13 +34,18 @@ public:
 
     JsonValue() = default;
 
-    JsonValueVariant value()
+    std::optional<std::reference_wrapper<const JsonValueVariant>> value() const
     {
-        return this->m_value;
+        if (!this->m_value)
+    {
+            return std::nullopt;
+        }
+
+        return std::cref(*this->m_value);
     }
 
-    static JsonValue parse(std::string &json_str);
+    static JsonValue parse(const std::string &json_str);
 
 private:
-    JsonValueVariant m_value;
+    std::optional<JsonValueVariant> m_value;
 };

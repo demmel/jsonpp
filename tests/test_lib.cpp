@@ -1,99 +1,122 @@
 #include "gtest/gtest.h"
 #include "lib.hpp"
 
+void assert_value_eq(const JsonValue &actual, const JsonValue &expected);
+
+struct Visitor
+{
+    void operator()(const bool &actual, const bool &expected) const
+    {
+        ASSERT_EQ(actual, expected);
+    }
+
+    void operator()(const double &actual, const double &expected) const
+    {
+        ASSERT_EQ(actual, expected);
+    }
+
+    void operator()(const std::string &actual, const std::string &expected) const
+    {
+        ASSERT_EQ(actual, expected);
+    }
+
+    void operator()(const JsonArray &actual, const JsonArray &expected) const
+    {
+        ASSERT_EQ(actual.size(), expected.size());
+        for (int i = 0; i < actual.size(); ++i)
+        {
+            assert_value_eq(actual[i], expected[i]);
+        }
+    }
+
+    void operator()(const JsonObject &actual, const JsonObject &expected) const
+    {
+        ASSERT_EQ(actual.size(), expected.size());
+        for (const auto &[key, value] : actual)
+        {
+            auto it = expected.find(key);
+            ASSERT_NE(it, expected.end()) << "Actual contains key not in expected";
+            assert_value_eq(value, it->second);
+        }
+    }
+
+    template <typename T, typename U>
+    void operator()(const T &actual, const U &expected) const
+    {
+        FAIL() << "Actual has different type than expected";
+    }
+};
+
+void assert_variant_eq(const JsonValueVariant &actual, const JsonValueVariant &expected)
+{
+    std::visit(Visitor{}, expected, actual);
+}
+
+void assert_value_eq(const JsonValue &actual, const JsonValue &expected)
+{
+    auto expected_value = expected.value();
+    if (expected_value)
+    {
+        auto expected_variant = expected_value->get();
+        auto actual_value = actual.value();
+        if (actual_value)
+        {
+            auto actual_variant = actual_value->get();
+            assert_variant_eq(actual_variant, expected_variant);
+        }
+        else
+        {
+            FAIL() << "Expected non-null";
+        }
+    }
+    else
+    {
+        ASSERT_FALSE(actual.value().has_value()) << "Expected null";
+    }
+}
+
 TEST(LibTest, ParseNull)
 {
-    auto parsed = JsonValue::parse(std::string("null"));
-
-    EXPECT_EQ(parsed.value().has_value(), false);
+    assert_value_eq(JsonValue::parse(std::string("null")), JsonValue());
 };
 
 TEST(LibTest, ParseTrue)
 {
-    auto parsed = JsonValue::parse(std::string("true"));
-
-    EXPECT_EQ(parsed.value().has_value(), true);
-
-    auto parsed_value = parsed.value().value();
-
-    EXPECT_EQ(std::holds_alternative<bool>(parsed_value), true);
-
-    auto parsed_bool = std::get<bool>(parsed_value);
-
-    EXPECT_EQ(parsed_bool, true);
+    assert_value_eq(JsonValue::parse(std::string("true")), JsonValue(true));
 };
 
 TEST(LibTest, ParseFalse)
 {
-    auto parsed = JsonValue::parse(std::string("false"));
-
-    EXPECT_EQ(parsed.value().has_value(), true);
-
-    auto parsed_value = parsed.value().value();
-
-    EXPECT_EQ(std::holds_alternative<bool>(parsed_value), true);
-
-    auto parsed_bool = std::get<bool>(parsed_value);
-
-    EXPECT_EQ(parsed_bool, false);
+    assert_value_eq(JsonValue::parse(std::string("false")), JsonValue(false));
 };
 
 TEST(LibTest, ParseNumber)
 {
-    auto parsed = JsonValue::parse(std::string("1234"));
-
-    EXPECT_EQ(parsed.value().has_value(), true);
-
-    auto parsed_value = parsed.value().value();
-
-    EXPECT_EQ(std::holds_alternative<double>(parsed_value), true);
-
-    auto parsed_double = std::get<double>(parsed_value);
-
-    EXPECT_EQ(parsed_double, 1234.);
+    assert_value_eq(JsonValue::parse(std::string("1234")), JsonValue(1234.));
 };
 
 TEST(LibTest, ParseString)
 {
-    auto parsed = JsonValue::parse(std::string("\"Hello, world!\""));
-
-    EXPECT_EQ(parsed.value().has_value(), true);
-
-    auto parsed_value = parsed.value().value();
-
-    EXPECT_EQ(std::holds_alternative<std::string>(parsed_value), true);
-
-    auto parsed_string = std::get<std::string>(parsed_value);
-
-    EXPECT_EQ(parsed_string, "Hello, world!");
+    assert_value_eq(JsonValue::parse(std::string("\"Hello, world!\"")), JsonValue("Hello, world!"));
 };
 
 TEST(LibTest, ParseEmptyArray)
 {
-    auto parsed = JsonValue::parse(std::string("[]"));
-
-    EXPECT_EQ(parsed.value().has_value(), true);
-
-    auto parsed_value = parsed.value().value();
-
-    EXPECT_EQ(std::holds_alternative<JsonArray>(parsed_value), true);
-
-    auto parsed_array = std::get<JsonArray>(parsed_value);
-
-    EXPECT_EQ(parsed_array.size(), 0);
+    assert_value_eq(JsonValue::parse(std::string("[]")), JsonValue(std::vector<JsonValue>{}));
 };
 
 TEST(LibTest, ParseEmptyObject)
 {
-    auto parsed = JsonValue::parse(std::string("{}"));
+    assert_value_eq(JsonValue::parse(std::string("{}")), JsonValue(std::unordered_map<std::string, JsonValue>{}));
+};
 
-    EXPECT_EQ(parsed.value().has_value(), true);
-
-    auto parsed_value = parsed.value().value();
-
-    EXPECT_EQ(std::holds_alternative<JsonObject>(parsed_value), true);
-
-    auto parsed_object = std::get<JsonObject>(parsed_value);
-
-    EXPECT_EQ(parsed_object.size(), 0);
+TEST(LibTest, ParseStressTest)
+{
+    assert_value_eq(JsonValue::parse(
+                        std::string("  {\"a\": {\"b\" : 123   ,  \"c\": \"asd\"}, \
+                                \
+                            \"d\": [1,2,3]    \
+                            }")),
+                    JsonValue({"a", JsonValue({"b", JsonValue(123.), "c", JsonValue("asd")}),
+                               "d", JsonValue({JsonValue(1.), JsonValue(2.), JsonValue(3.)})}));
 };
