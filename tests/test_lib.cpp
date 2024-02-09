@@ -66,13 +66,13 @@ struct Visitor
     template <typename T, typename U>
     void operator()(const T &actual, const U &expected) const
     {
-        FAIL() << "Actual (" << type_name<T>() << ") has different type than expected (" << type_name<U>() << ")";
+        FAIL() << "Actual (" << ToJsonVisitor{}(actual) << ") has different type than expected (" << ToJsonVisitor{}(expected) << ")";
     }
 };
 
 void assert_variant_eq(const JsonValueVariant &actual, const JsonValueVariant &expected)
 {
-    std::visit(Visitor{}, expected, actual);
+    std::visit(Visitor{}, actual, expected);
 }
 
 void assert_value_eq(const JsonValue &actual, const JsonValue &expected)
@@ -140,6 +140,16 @@ TEST(LibTest, ParseStressTest)
                                 \
                             \"d\": [1,2,3]    \
                             }")),
-                    JsonValue({std::string("a"), JsonValue({std::string("b"), JsonValue(123.), std::string("c"), JsonValue(std::string("asd"))}),
-                               std::string("d"), JsonValue({JsonValue(1.), JsonValue(2.), JsonValue(3.)})}));
+                    JsonValue(
+                        {{std::string("a"),
+                          JsonValue(
+                              {{std::string("b"),
+                                JsonValue(123.)},
+                               {std::string("c"),
+                                JsonValue(std::string("asd"))}})},
+                         {std::string("d"),
+                          JsonValue(
+                              {JsonValue(1.),
+                               JsonValue(2.),
+                               JsonValue(3.)})}}));
 };

@@ -2,14 +2,46 @@
 
 #include <stdexcept>
 
-// Define a helper type to combine all lambdas into a single visitable type
-template <class... Ts>
-struct inline_visit : Ts...
+std::string ToJsonVisitor::operator()(const JsonObject &o) const
 {
-    using Ts::operator()...;
-};
-template <class... Ts>
-inline_visit(Ts...) -> inline_visit<Ts...>;
+    std::string buf = "{";
+    for (auto &[k, v] : o)
+    {
+        buf.append(k);
+        buf.push_back(':');
+        buf.append(v.json());
+        buf.push_back(',');
+    }
+    buf.push_back('}');
+    return buf;
+}
+
+std::string ToJsonVisitor::operator()(const JsonArray &a) const
+{
+    std::string buf = "[";
+    for (auto &v : a)
+    {
+        buf.append(v.json());
+        buf.push_back(',');
+    }
+    buf.push_back(']');
+    return buf;
+}
+
+std::string ToJsonVisitor::operator()(const std::string &s) const
+{
+    return "\"" + s + "\"";
+}
+
+std::string ToJsonVisitor::operator()(const double &d) const
+{
+    return std::to_string(d);
+}
+
+std::string ToJsonVisitor::operator()(const bool &b) const
+{
+    return std::to_string(b);
+}
 
 struct StateValue
 {
@@ -138,6 +170,7 @@ struct StateObject
     }
 
     std::optional<std::string> current_key;
+    bool need_comma;
     JsonObject values;
 };
 
@@ -433,14 +466,50 @@ struct StateCharVisitor
         }
         else
         {
-            return Push{
-                StateValue{}};
+            return Push{StateValue{}, true};
         }
     }
 
-    StateOp operator()(const StateObject &state) const
+    StateOp operator()(StateObject &state) const
     {
-        return Noop{};
+        if (std::isspace(this->c))
+        {
+            return Noop{};
+        }
+        else if (this->c == '}')
+        {
+            if (state.current_key)
+            {
+                throw std::runtime_error("JSON object missing value after key");
+            }
+            return Pop{JsonValue(state.values), false};
+        }
+        else if (state.need_comma)
+        {
+            if (this->c != ',')
+            {
+                throw std::runtime_error("Expected comma");
+            }
+            state.need_comma = false;
+            return Noop{};
+        }
+        else if (state.current_key)
+        {
+            if (this->c != ':')
+            {
+                throw std::runtime_error("Expected colon");
+            }
+            return Push{StateValue{}};
+        }
+        else
+        {
+            auto next = StateString::create_if_valid_start(c);
+            if (!next)
+            {
+                throw std::runtime_error("Expected start of key");
+            }
+            return Push{next.value()};
+        }
     }
 
     StateOp operator()(StateNull &state) const
@@ -543,7 +612,19 @@ struct StatePopOpVisitor
         state.need_comma = true;
     }
 
-    void operator()(StateObject &state) {}
+    void operator()(StateObject &state)
+    {
+        if (state.current_key)
+        {
+            state.values.insert({state.current_key.value(), this->value});
+            state.current_key = std::nullopt;
+            state.need_comma = true;
+        }
+        else
+        {
+            state.current_key = std::get<std::string>(this->value.value().value().get());
+        }
+    }
 
     template <typename T>
     void operator()(T &)

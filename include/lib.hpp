@@ -28,6 +28,15 @@ using JsonValueVariant = std::variant<
     double,
     bool>;
 
+struct ToJsonVisitor
+{
+    std::string operator()(const JsonObject &o) const;
+    std::string operator()(const JsonArray &a) const;
+    std::string operator()(const std::string &s) const;
+    std::string operator()(const double &d) const;
+    std::string operator()(const bool &b) const;
+};
+
 /**
  * Represents all possible valid JSON values.
  */
@@ -68,6 +77,18 @@ public:
         }
 
         return std::cref(*this->m_value);
+    }
+
+    std::string json() const
+    {
+        if (this->m_value)
+        {
+            return std::visit(ToJsonVisitor{}, this->m_value.value());
+        }
+        else
+        {
+            return "null";
+        }
     }
 
     /**
