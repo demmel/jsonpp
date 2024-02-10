@@ -55,14 +55,14 @@ struct StateValue
 
 enum StateNumberState
 {
-    NO_DIGITS,
-    ZERO,
-    SOME_DIGIT,
-    DOT,
-    DOT_DIGITS,
-    EXP,
-    EXP_SIGN,
-    EXP_DIGITS,
+    NoDigits,
+    Zero,
+    SomeDigits,
+    Dot,
+    DotDigits,
+    Exp,
+    ExpSign,
+    ExpDigits,
 };
 
 struct StateNumber
@@ -72,23 +72,23 @@ struct StateNumber
         StateNumberState state;
         if (c == '.')
         {
-            state = StateNumberState::DOT;
+            state = StateNumberState::Dot;
         }
         else if (c == 'e' || c == 'E')
         {
-            state = StateNumberState::EXP;
+            state = StateNumberState::Exp;
         }
         else if (c == '0')
         {
-            state = StateNumberState::ZERO;
+            state = StateNumberState::Zero;
         }
         else if (std::isdigit(c))
         {
-            state = StateNumberState::SOME_DIGIT;
+            state = StateNumberState::SomeDigits;
         }
         else if (c == '-')
         {
-            state = StateNumberState::NO_DIGITS;
+            state = StateNumberState::NoDigits;
         }
         else
         {
@@ -279,14 +279,14 @@ struct StateCharVisitor
     {
         switch (state.state)
         {
-        case NO_DIGITS:
+        case NoDigits:
             if (this->c == '0')
             {
-                state.state = ZERO;
+                state.state = Zero;
             }
             else if (std::isdigit(this->c))
             {
-                state.state = SOME_DIGIT;
+                state.state = SomeDigits;
             }
             else
             {
@@ -294,17 +294,17 @@ struct StateCharVisitor
             }
             state.s.push_back(this->c);
             break;
-        case SOME_DIGIT:
+        case SomeDigits:
             if (std::isdigit(this->c))
             {
             }
             else if (this->c == '.')
             {
-                state.state = DOT;
+                state.state = Dot;
             }
             else if (this->c == 'e' || this->c == 'E')
             {
-                state.state = EXP;
+                state.state = Exp;
             }
             else
             {
@@ -312,14 +312,14 @@ struct StateCharVisitor
             }
             state.s.push_back(this->c);
             break;
-        case ZERO:
+        case Zero:
             if (this->c == '.')
             {
-                state.state = DOT;
+                state.state = Dot;
             }
             else if (this->c == 'e' || this->c == 'E')
             {
-                state.state = EXP;
+                state.state = Exp;
             }
             else
             {
@@ -327,10 +327,10 @@ struct StateCharVisitor
             }
             state.s.push_back(this->c);
             break;
-        case DOT:
+        case Dot:
             if (std::isdigit(this->c))
             {
-                state.state = DOT_DIGITS;
+                state.state = DotDigits;
             }
             else
             {
@@ -338,13 +338,13 @@ struct StateCharVisitor
             }
             state.s.push_back(this->c);
             break;
-        case DOT_DIGITS:
+        case DotDigits:
             if (std::isdigit(this->c))
             {
             }
             else if (this->c == 'e' || this->c == 'E')
             {
-                state.state = EXP;
+                state.state = Exp;
             }
             else
             {
@@ -352,14 +352,14 @@ struct StateCharVisitor
             }
             state.s.push_back(this->c);
             break;
-        case EXP:
+        case Exp:
             if (std::isdigit(this->c))
             {
-                state.state = EXP_DIGITS;
+                state.state = ExpDigits;
             }
             else if (this->c == 'e' || this->c == 'E')
             {
-                state.state = EXP_SIGN;
+                state.state = ExpSign;
             }
             else
             {
@@ -367,10 +367,10 @@ struct StateCharVisitor
             }
             state.s.push_back(this->c);
             break;
-        case EXP_SIGN:
+        case ExpSign:
             if (std::isdigit(this->c))
             {
-                state.state = EXP_DIGITS;
+                state.state = ExpDigits;
             }
             else
             {
@@ -378,10 +378,10 @@ struct StateCharVisitor
             }
             state.s.push_back(this->c);
             break;
-        case EXP_DIGITS:
+        case ExpDigits:
             if (std::isdigit(this->c))
             {
-                state.state = EXP_DIGITS;
+                state.state = ExpDigits;
             }
             else
             {
@@ -551,10 +551,10 @@ struct StateTerminateVisitor
     {
         switch (state.state)
         {
-        case ZERO:
-        case SOME_DIGIT:
-        case DOT_DIGITS:
-        case EXP_DIGITS:
+        case Zero:
+        case SomeDigits:
+        case DotDigits:
+        case ExpDigits:
             return std::strtod(state.s.c_str(), NULL);
         default:
             throw std::runtime_error("Unexpected end of input in JSON number");
