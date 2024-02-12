@@ -65,6 +65,15 @@ namespace jsonpp::pda
     using FinalizeResult = std::variant<TState, FinalizeError>;
 
     template <typename TState, typename TInput>
+    using TransitionFn = std::function<StateOp<TState>(TState &, TInput)>;
+
+    template <typename TState>
+    using OnPopFn = std::function<std::optional<Reject>(TState &, TState &)>;
+
+    template <typename TState>
+    using FinalizeFn = std::function<FinalizeOp(TState &)>;
+
+    template <typename TState, typename TInput>
     class PushdownAutomata
     {
     public:
@@ -73,11 +82,11 @@ namespace jsonpp::pda
 
         TransitionResult<TState> transition(
             TInput input,
-            std::function<StateOp<TState>(TState &, TInput)> handle_transition,
-            std::function<std::optional<Reject>(TState &, TState &)> on_pop_impl);
+            TransitionFn<TState, TInput> handle_transition,
+            OnPopFn<TState> on_pop_impl);
         FinalizeResult<TState> finalize(
-            std::function<FinalizeOp(TState &)> handle_finalize,
-            std::function<std::optional<Reject>(TState &, TState &)> handle_pop);
+            FinalizeFn<TState> handle_finalize,
+            OnPopFn<TState> handle_pop);
 
     private:
         std::vector<TState> stack;
@@ -86,8 +95,8 @@ namespace jsonpp::pda
     template <typename TState, typename TInput>
     TransitionResult<TState> PushdownAutomata<TState, TInput>::transition(
         TInput input,
-        std::function<StateOp<TState>(TState &, TInput)> handle_transition,
-        std::function<std::optional<Reject>(TState &, TState &)> on_pop_impl)
+        TransitionFn<TState, TInput> handle_transition,
+        OnPopFn<TState> on_pop_impl)
     {
         while (1)
         {
@@ -156,8 +165,8 @@ namespace jsonpp::pda
 
     template <typename TState, typename TInput>
     FinalizeResult<TState> PushdownAutomata<TState, TInput>::finalize(
-        std::function<FinalizeOp(TState &)> handle_finalize,
-        std::function<std::optional<Reject>(TState &, TState &)> on_pop_impl)
+        FinalizeFn<TState> handle_finalize,
+        OnPopFn<TState> on_pop_impl)
     {
         while (this->stack.size() > 1)
         {
