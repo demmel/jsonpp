@@ -10,6 +10,7 @@
 #include <iterator>
 
 #include "utils.hpp"
+#include "pda.hpp"
 
 namespace jsonpp
 {
@@ -51,9 +52,20 @@ namespace jsonpp
         return std::to_string(b);
     }
 
+    using StateFinalizationResult = std::variant<JsonValue, std::string>;
+
     struct StateValue
     {
-        std::optional<JsonValue> value;
+        StateFinalizationResult finalize() const
+        {
+            if (!m_value.has_value())
+            {
+                return std::string("Unexpected end of input in JSON value");
+            }
+            return m_value.value();
+        }
+
+        std::optional<JsonValue> m_value;
     };
 
     enum StateNumberState
@@ -101,6 +113,20 @@ namespace jsonpp
             return StateNumber{state, std::string(1, c)};
         }
 
+        StateFinalizationResult finalize() const
+        {
+            switch (this->state)
+            {
+            case Zero:
+            case SomeDigits:
+            case DotDigits:
+            case ExpDigits:
+                return std::strtod(this->s.c_str(), NULL);
+            default:
+                return std::string("Unexpected end of input in JSON number");
+            }
+        }
+
         StateNumberState state;
         std::string s;
     };
@@ -116,6 +142,16 @@ namespace jsonpp
                 return std::nullopt;
             }
             return StateTrue{1};
+        }
+
+        StateFinalizationResult finalize() const
+        {
+            if (this->matched != strlen(MATCH))
+            {
+                return std::string("Unexpected end of input in JSON true");
+            }
+
+            return JsonValue(true);
         }
 
         int matched;
@@ -134,6 +170,16 @@ namespace jsonpp
             return StateFalse{1};
         }
 
+        StateFinalizationResult finalize() const
+        {
+            if (this->matched != strlen(MATCH))
+            {
+                return std::string("Unexpected end of input in JSON false");
+            }
+
+            return JsonValue(false);
+        }
+
         int matched;
     };
 
@@ -146,6 +192,11 @@ namespace jsonpp
                 return std::nullopt;
             }
             return StateString{std::string()};
+        }
+
+        StateFinalizationResult finalize() const
+        {
+            return JsonValue(this->s);
         }
 
         std::string s;
@@ -162,6 +213,11 @@ namespace jsonpp
             return StateArray{};
         }
 
+        StateFinalizationResult finalize() const
+        {
+            return JsonValue(this->values);
+        }
+
         bool need_comma;
         JsonArray values;
     };
@@ -175,6 +231,11 @@ namespace jsonpp
                 return std::nullopt;
             }
             return StateObject{};
+        }
+
+        StateFinalizationResult finalize() const
+        {
+            return JsonValue(this->values);
         }
 
         std::optional<std::string> current_key;
@@ -193,6 +254,16 @@ namespace jsonpp
                 return std::nullopt;
             }
             return StateNull{1};
+        }
+
+        StateFinalizationResult finalize() const
+        {
+            if (this->matched != strlen(MATCH))
+            {
+                return std::string("Unexpected end of input in JSON null");
+            }
+
+            return JsonValue(nullptr);
         }
 
         int matched;
@@ -237,48 +308,32 @@ namespace jsonpp
         }
     }
 
-    struct Noop
+    struct StateTransitionVisitor
     {
-    };
-    struct Push
-    {
-        State state;
-        bool redo = false;
-    };
-    struct Pop
-    {
-        JsonValue value;
-        bool redo = true;
-    };
-
-    using StateOp = std::variant<Noop, Push, Pop>;
-
-    struct StateCharVisitor
-    {
-        StateOp operator()(const StateValue &state) const
+        pda::StateOp<State> operator()(const StateValue &state) const
         {
             if (std::isspace(this->c))
             {
-                return Noop{};
+                return pda::Noop{};
             }
 
-            if (state.value.has_value())
+            if (state.m_value.has_value())
             {
-                return Pop{state.value.value()};
+                return pda::Pop{};
             }
 
             if (auto new_state = tryCreateState<
                     StateString, StateNumber, StateTrue, StateFalse, StateNull, StateObject, StateArray>(c))
             {
-                return Push{State{std::visit([](auto &&s)
-                                             { return State{s}; },
-                                             new_state.value())}};
+                return pda::Push<State>{std::visit([](auto &&s) -> State
+                                                   { return State{s}; },
+                                                   new_state.value())};
             }
 
             throw std::runtime_error("Invalid JSON value");
         }
 
-        StateOp operator()(StateNumber &state) const
+        pda::StateOp<State> operator()(StateNumber &state) const
         {
             switch (state.state)
             {
@@ -311,7 +366,7 @@ namespace jsonpp
                 }
                 else
                 {
-                    return Pop{JsonValue(std::strtod(state.s.c_str(), NULL))};
+                    return pda::Pop{};
                 }
                 state.s.push_back(this->c);
                 break;
@@ -326,7 +381,7 @@ namespace jsonpp
                 }
                 else
                 {
-                    return Pop{JsonValue(std::strtod(state.s.c_str(), NULL))};
+                    return pda::Pop{};
                 }
                 state.s.push_back(this->c);
                 break;
@@ -351,7 +406,7 @@ namespace jsonpp
                 }
                 else
                 {
-                    return Pop{JsonValue(std::strtod(state.s.c_str(), NULL))};
+                    return pda::Pop{};
                 }
                 state.s.push_back(this->c);
                 break;
@@ -388,40 +443,40 @@ namespace jsonpp
                 }
                 else
                 {
-                    return Pop{JsonValue(std::strtod(state.s.c_str(), NULL))};
+                    return pda::Pop{};
                 }
                 state.s.push_back(this->c);
                 break;
             }
 
-            return Noop{};
+            return pda::Noop{};
         }
 
-        StateOp operator()(StateTrue &state) const
+        pda::StateOp<State> operator()(StateTrue &state) const
         {
             if (state.matched >= strlen(state.MATCH))
             {
-                return Pop{JsonValue(true)};
+                return pda::Pop{};
             }
 
             ++state.matched;
 
-            return Noop{};
+            return pda::Noop{};
         }
 
-        StateOp operator()(StateFalse &state) const
+        pda::StateOp<State> operator()(StateFalse &state) const
         {
             if (state.matched >= strlen(state.MATCH))
             {
-                return Pop{JsonValue(false)};
+                return pda::Pop{};
             }
 
             ++state.matched;
 
-            return Noop{};
+            return pda::Noop{};
         }
 
-        StateOp operator()(StateString &state) const
+        pda::StateOp<State> operator()(StateString &state) const
         {
             if (state.s.back() == '\\')
             {
@@ -447,24 +502,24 @@ namespace jsonpp
                 }
                 else if (this->c == '"')
                 {
-                    return Pop{JsonValue(state.s), false};
+                    return pda::Pop{false};
                 }
             }
 
             state.s.push_back(this->c);
 
-            return Noop{};
+            return pda::Noop{};
         }
 
-        StateOp operator()(StateArray &state) const
+        pda::StateOp<State> operator()(StateArray &state) const
         {
             if (std::isspace(this->c))
             {
-                return Noop{};
+                return pda::Noop{};
             }
             else if (this->c == ']')
             {
-                return Pop{JsonValue(state.values), false};
+                return pda::Pop{false};
             }
             else if (state.need_comma)
             {
@@ -473,19 +528,19 @@ namespace jsonpp
                     throw std::runtime_error("Expected comma");
                 }
                 state.need_comma = false;
-                return Noop{};
+                return pda::Noop{};
             }
             else
             {
-                return Push{StateValue{}, true};
+                return pda::Push<State>{StateValue{}, true};
             }
         }
 
-        StateOp operator()(StateObject &state) const
+        pda::StateOp<State> operator()(StateObject &state) const
         {
             if (std::isspace(this->c))
             {
-                return Noop{};
+                return pda::Noop{};
             }
             else if (this->c == '}')
             {
@@ -493,7 +548,7 @@ namespace jsonpp
                 {
                     throw std::runtime_error("JSON object missing value after key");
                 }
-                return Pop{JsonValue(state.values), false};
+                return pda::Pop{false};
             }
             else if (state.need_comma)
             {
@@ -502,7 +557,7 @@ namespace jsonpp
                     throw std::runtime_error("Expected comma");
                 }
                 state.need_comma = false;
-                return Noop{};
+                return pda::Noop{};
             }
             else if (state.current_key)
             {
@@ -510,7 +565,7 @@ namespace jsonpp
                 {
                     throw std::runtime_error("Expected colon");
                 }
-                return Push{StateValue{}};
+                return pda::Push<State>{StateValue{}};
             }
             else
             {
@@ -519,189 +574,249 @@ namespace jsonpp
                 {
                     throw std::runtime_error("Expected start of key");
                 }
-                return Push{next.value()};
+                return pda::Push<State>{next.value()};
             }
         }
 
-        StateOp operator()(StateNull &state) const
+        pda::StateOp<State> operator()(StateNull &state) const
         {
             if (state.matched >= strlen(state.MATCH))
             {
-                return Pop{JsonValue(nullptr)};
+                return pda::Pop{};
             }
 
             ++state.matched;
 
-            return Noop{};
+            return pda::Noop{};
         }
 
         const char c;
-        const size_t i;
     };
 
-    struct StateTerminateVisitor
+    struct StateFinalizeVisitor
     {
-        JsonValue operator()(const StateValue &state) const
+        pda::FinalizeOp operator()(const StateValue &state) const
         {
-            if (!state.value.has_value())
+            auto res = state.finalize();
+            auto error = std::get_if<std::string>(&res);
+            if (error)
             {
-                throw std::runtime_error("Unexpected end of input in JSON value");
+                return pda::Reject{*error};
             }
-            return state.value.value();
+            return pda::PopOrAccept{};
         }
 
-        JsonValue operator()(StateNumber &state) const
+        pda::FinalizeOp operator()(const StateNumber &state) const
         {
-            switch (state.state)
+            auto res = state.finalize();
+            auto error = std::get_if<std::string>(&res);
+            if (error)
             {
-            case Zero:
-            case SomeDigits:
-            case DotDigits:
-            case ExpDigits:
-                return std::strtod(state.s.c_str(), NULL);
-            default:
-                throw std::runtime_error("Unexpected end of input in JSON number");
+                return pda::Reject{*error};
             }
+            return pda::PopOrAccept{};
         }
 
-        JsonValue operator()(StateTrue &state) const
+        pda::FinalizeOp operator()(const StateTrue &state) const
         {
-            if (state.matched != strlen(state.MATCH))
+            auto res = state.finalize();
+            auto error = std::get_if<std::string>(&res);
+            if (error)
             {
-                throw std::runtime_error("Unexpected end of input in JSON true");
+                return pda::Reject{*error};
             }
-
-            return JsonValue(true);
+            return pda::PopOrAccept{};
         }
 
-        JsonValue operator()(const StateFalse &state) const
+        pda::FinalizeOp operator()(const StateFalse &state) const
         {
-            if (state.matched != strlen(state.MATCH))
+            auto res = state.finalize();
+            auto error = std::get_if<std::string>(&res);
+            if (error)
             {
-                throw std::runtime_error("Unexpected end of input in JSON false");
+                return pda::Reject{*error};
             }
-
-            return JsonValue(false);
+            return pda::PopOrAccept{};
         }
 
-        JsonValue operator()(const StateString &) const
+        pda::FinalizeOp operator()(const StateString &) const
         {
-            throw std::runtime_error("Unexpected end of input in JSON string");
+            return pda::Reject{"Unexpected end of input in JSON string"};
         }
 
-        JsonValue operator()(const StateArray &) const
+        pda::FinalizeOp operator()(const StateArray &) const
         {
-            throw std::runtime_error("Unexpected end of input in JSON array");
+            return pda::Reject{"Unexpected end of input in JSON array"};
         }
 
-        JsonValue operator()(const StateObject &) const
+        pda::FinalizeOp operator()(const StateObject &) const
         {
-            throw std::runtime_error("Unexpected end of input in JSON object");
+            return pda::Reject{"Unexpected end of input in JSON object"};
         }
 
-        JsonValue operator()(const StateNull &state) const
+        pda::FinalizeOp operator()(const StateNull &state) const
         {
-            if (state.matched != strlen(state.MATCH))
+            auto res = state.finalize();
+            auto error = std::get_if<std::string>(&res);
+            if (error)
             {
-                throw std::runtime_error("Unexpected end of input in JSON null");
+                return pda::Reject{*error};
             }
-
-            return JsonValue(nullptr);
+            return pda::PopOrAccept{};
         }
     };
 
     struct StatePopOpVisitor
     {
-        void operator()(StateValue &state)
+        std::optional<pda::Reject> operator()(StateValue &state)
         {
-            state.value = this->value;
+            auto res = std::visit(
+                [](auto &state)
+                {
+                    return state.finalize();
+                },
+                this->popped);
+            auto error = std::get_if<std::string>(&res);
+            if (error)
+            {
+                return pda::Reject{*error};
+            }
+            state.m_value = std::get<JsonValue>(res);
+            return std::nullopt;
         }
 
-        void operator()(StateArray &state)
+        std::optional<pda::Reject> operator()(StateArray &state)
         {
-            state.values.push_back(this->value);
+            auto res = std::visit(
+                [](auto &state)
+                {
+                    return state.finalize();
+                },
+                this->popped);
+            auto error = std::get_if<std::string>(&res);
+            if (error)
+            {
+                return pda::Reject{*error};
+            }
+            auto value = std::get<JsonValue>(res);
+
+            state.values.push_back(value);
             state.need_comma = true;
+
+            return std::nullopt;
         }
 
-        void operator()(StateObject &state)
+        std::optional<pda::Reject> operator()(StateObject &state)
         {
+            auto res = std::visit(
+                [](auto &state)
+                {
+                    return state.finalize();
+                },
+                this->popped);
+            auto error = std::get_if<std::string>(&res);
+            if (error)
+            {
+                return pda::Reject{*error};
+            }
+            auto value = std::get<JsonValue>(res);
+
             if (state.current_key)
             {
-                state.values.insert({state.current_key.value(), this->value});
+                state.values.insert({state.current_key.value(), value});
                 state.current_key = std::nullopt;
                 state.need_comma = true;
             }
             else
             {
-                state.current_key = std::get<std::string>(this->value.value().value().get());
+                state.current_key = std::get<std::string>(value.value().value().get());
             }
+
+            return std::nullopt;
         }
 
         template <typename T>
-        void operator()(T &)
+        std::optional<pda::Reject> operator()(T &)
         {
-            throw std::runtime_error("Cannot handle popped state");
+            return pda::Reject{"Cannot handle popped state"};
         }
 
-        JsonValue value;
-    };
-
-    struct StateOpVisitor
-    {
-        bool operator()(const Noop &) const
-        {
-            return false;
-        }
-
-        bool operator()(const Push &op) const
-        {
-            states.push_back(op.state);
-            return op.redo;
-        }
-
-        bool operator()(const Pop &op) const
-        {
-            states.pop_back();
-
-            if (states.size() < 1)
-            {
-                throw std::runtime_error("Extraneous input after JSON vlaue");
-            }
-
-            std::visit(StatePopOpVisitor{op.value}, states.back());
-
-            return op.redo;
-        }
-
-        std::vector<State> &states;
+        State popped;
     };
 
     JsonValue JsonValue::parse(const std::string_view json_str)
     {
         auto it = json_str.begin();
-        auto states = std::vector<State>{StateValue{std::nullopt}};
+        auto pda = pda::PushdownAutomata<State, char>(StateValue{});
 
         for (size_t i = 0; i < json_str.size(); ++i)
         {
             auto c = json_str[i];
-            while (1)
-            {
-                auto op = std::visit(StateCharVisitor{c, i}, states.back());
-                auto redo = std::visit(StateOpVisitor{states}, op);
-                if (!redo)
+            auto res = pda.transition(
+                c,
+                [](auto &state, auto c)
                 {
-                    break;
-                }
+                    return std::visit(StateTransitionVisitor{c}, state);
+                },
+                [](auto &state, auto &popped)
+                {
+                    return std::visit(StatePopOpVisitor{popped}, state);
+                });
+
+            auto error = std::get_if<pda::TransitionError>(&res);
+            if (error)
+            {
+                std::visit(
+                    utils::inline_visitor{
+                        [](pda::PoppedEmptyError)
+                        {
+                            throw std::runtime_error("Extraneous input after JSON");
+                        },
+                        [](pda::RejectedError error)
+                        {
+                            throw std::runtime_error(error.reason);
+                        }},
+                    *error);
             }
         }
 
-        while (states.size() > 1)
+        auto res =
+            pda.finalize(
+                [](auto &state)
+                {
+                    return std::visit(StateFinalizeVisitor{}, state);
+                },
+                [](auto &state, auto popped)
+                {
+                    return std::visit(StatePopOpVisitor{popped}, state);
+                });
+
+        if (auto error = std::get_if<pda::FinalizeError>(&res))
         {
-            auto value = std::visit(StateTerminateVisitor{}, states.back());
-            states.pop_back();
-            std::visit(StatePopOpVisitor{value}, states.back());
+            std::visit(
+                utils::inline_visitor{
+                    [](pda::RejectedError error)
+                    {
+                        throw std::runtime_error(error.reason);
+                    }},
+                *error);
         }
 
-        return std::get<StateValue>(states.back()).value.value();
+        auto final_state = std::get<State>(res);
+
+        auto final_state_res = std::visit(
+            [](auto &state)
+            {
+                return state.finalize();
+            },
+            final_state);
+        auto error = std::get_if<std::string>(&final_state_res);
+        if (error)
+        {
+            throw std::runtime_error(*error);
+        }
+        auto value = std::get<JsonValue>(final_state_res);
+
+        return value;
     }
 }
