@@ -153,3 +153,8 @@ TEST(LibTest, ParseStressTest)
                                jsonpp::JsonValue(2.),
                                jsonpp::JsonValue(3.)})}}));
 };
+
+TEST(LibTest, InvalidLiteral)
+{
+    ASSERT_ANY_THROW(jsonpp::JsonValue::parse("tttt"));
+};

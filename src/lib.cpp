@@ -84,454 +84,469 @@ namespace jsonpp
     }
 
     pda::StateOp<State> StateValue::transition(const char c)
+    {
+        if (std::isspace(c))
         {
-            if (std::isspace(c))
-            {
-                return pda::Noop{};
-            }
+            return pda::Noop{};
+        }
 
-            if (this->m_value.has_value())
-            {
-                return pda::Pop{};
-            }
+        if (this->m_value.has_value())
+        {
+            return pda::Pop{};
+        }
 
-            if (auto new_state = tryCreateState<
-                    StateString, StateNumber, StateTrue, StateFalse, StateNull, StateObject, StateArray>(c))
-            {
+        if (auto new_state = tryCreateState<
+                StateString, StateNumber, StateTrue, StateFalse, StateNull, StateObject, StateArray>(c))
+        {
             return pda::Push<State>{
                 std::visit([](auto &&s) -> State
-                                                   { return State{s}; },
+                           { return State{s}; },
                            new_state.value()),
             };
-            }
-
-            throw std::runtime_error("Invalid JSON value");
         }
+
+        throw std::runtime_error("Invalid JSON value");
+    }
 
     StateFinalizationResult StateValue::finalize() const
+    {
+        if (!m_value.has_value())
         {
-            if (!m_value.has_value())
-            {
-                return std::string("Unexpected end of input in JSON value");
-            }
-            return m_value.value();
+            return std::string("Unexpected end of input in JSON value");
         }
+        return m_value.value();
+    }
 
     std::optional<StateNumber> StateNumber::create_if_valid_start(char c)
+    {
+        StateNumberState state;
+        if (c == '.')
         {
-            StateNumberState state;
-            if (c == '.')
+            state = StateNumberState::Dot;
+        }
+        else if (c == 'e' || c == 'E')
+        {
+            state = StateNumberState::Exp;
+        }
+        else if (c == '0')
+        {
+            state = StateNumberState::Zero;
+        }
+        else if (std::isdigit(c))
+        {
+            state = StateNumberState::SomeDigits;
+        }
+        else if (c == '-')
+        {
+            state = StateNumberState::NoDigits;
+        }
+        else
+        {
+            return std::nullopt;
+        }
+
+        return StateNumber{state, std::string(1, c)};
+    }
+
+    pda::StateOp<State> StateNumber::transition(const char c)
+    {
+        switch (this->state)
+        {
+        case NoDigits:
+            if (c == '0')
             {
-                state = StateNumberState::Dot;
-            }
-            else if (c == 'e' || c == 'E')
-            {
-                state = StateNumberState::Exp;
-            }
-            else if (c == '0')
-            {
-                state = StateNumberState::Zero;
+                this->state = Zero;
             }
             else if (std::isdigit(c))
             {
-                state = StateNumberState::SomeDigits;
-            }
-            else if (c == '-')
-            {
-                state = StateNumberState::NoDigits;
+                this->state = SomeDigits;
             }
             else
             {
-                return std::nullopt;
+                throw std::runtime_error("Invalid character");
             }
-
-            return StateNumber{state, std::string(1, c)};
-        }
-
-    pda::StateOp<State> StateNumber::transition(const char c)
-        {
-            switch (this->state)
+            this->s.push_back(c);
+            break;
+        case SomeDigits:
+            if (std::isdigit(c))
             {
-            case NoDigits:
-                if (c == '0')
-                {
-                    this->state = Zero;
-                }
-                else if (std::isdigit(c))
-                {
-                    this->state = SomeDigits;
-                }
-                else
-                {
-                    throw std::runtime_error("Invalid character");
-                }
-                this->s.push_back(c);
-                break;
-            case SomeDigits:
-                if (std::isdigit(c))
-                {
-                }
-                else if (c == '.')
-                {
-                    this->state = Dot;
-                }
-                else if (c == 'e' || c == 'E')
-                {
-                    this->state = Exp;
-                }
-                else
-                {
-                    return pda::Pop{};
-                }
-                this->s.push_back(c);
-                break;
-            case Zero:
-                if (c == '.')
-                {
-                    this->state = Dot;
-                }
-                else if (c == 'e' || c == 'E')
-                {
-                    this->state = Exp;
-                }
-                else
-                {
-                    return pda::Pop{};
-                }
-                this->s.push_back(c);
-                break;
-            case Dot:
-                if (std::isdigit(c))
-                {
-                    this->state = DotDigits;
-                }
-                else
-                {
-                    throw std::runtime_error("Invalid character");
-                }
-                this->s.push_back(c);
-                break;
-            case DotDigits:
-                if (std::isdigit(c))
-                {
-                }
-                else if (c == 'e' || c == 'E')
-                {
-                    this->state = Exp;
-                }
-                else
-                {
-                    return pda::Pop{};
-                }
-                this->s.push_back(c);
-                break;
-            case Exp:
-                if (std::isdigit(c))
-                {
-                    this->state = ExpDigits;
-                }
-                else if (c == 'e' || c == 'E')
-                {
-                    this->state = ExpSign;
-                }
-                else
-                {
-                    throw std::runtime_error("Invalid character");
-                }
-                this->s.push_back(c);
-                break;
-            case ExpSign:
-                if (std::isdigit(c))
-                {
-                    this->state = ExpDigits;
-                }
-                else
-                {
-                    throw std::runtime_error("Invalid character");
-                }
-                this->s.push_back(c);
-                break;
-            case ExpDigits:
-                if (std::isdigit(c))
-                {
-                    this->state = ExpDigits;
-                }
-                else
-                {
-                    return pda::Pop{};
-                }
-                this->s.push_back(c);
-                break;
             }
-
-            return pda::Noop{};
+            else if (c == '.')
+            {
+                this->state = Dot;
+            }
+            else if (c == 'e' || c == 'E')
+            {
+                this->state = Exp;
+            }
+            else
+            {
+                return pda::Pop{};
+            }
+            this->s.push_back(c);
+            break;
+        case Zero:
+            if (c == '.')
+            {
+                this->state = Dot;
+            }
+            else if (c == 'e' || c == 'E')
+            {
+                this->state = Exp;
+            }
+            else
+            {
+                return pda::Pop{};
+            }
+            this->s.push_back(c);
+            break;
+        case Dot:
+            if (std::isdigit(c))
+            {
+                this->state = DotDigits;
+            }
+            else
+            {
+                throw std::runtime_error("Invalid character");
+            }
+            this->s.push_back(c);
+            break;
+        case DotDigits:
+            if (std::isdigit(c))
+            {
+            }
+            else if (c == 'e' || c == 'E')
+            {
+                this->state = Exp;
+            }
+            else
+            {
+                return pda::Pop{};
+            }
+            this->s.push_back(c);
+            break;
+        case Exp:
+            if (std::isdigit(c))
+            {
+                this->state = ExpDigits;
+            }
+            else if (c == 'e' || c == 'E')
+            {
+                this->state = ExpSign;
+            }
+            else
+            {
+                throw std::runtime_error("Invalid character");
+            }
+            this->s.push_back(c);
+            break;
+        case ExpSign:
+            if (std::isdigit(c))
+            {
+                this->state = ExpDigits;
+            }
+            else
+            {
+                throw std::runtime_error("Invalid character");
+            }
+            this->s.push_back(c);
+            break;
+        case ExpDigits:
+            if (std::isdigit(c))
+            {
+                this->state = ExpDigits;
+            }
+            else
+            {
+                return pda::Pop{};
+            }
+            this->s.push_back(c);
+            break;
         }
+
+        return pda::Noop{};
+    }
 
     StateFinalizationResult StateNumber::finalize() const
+    {
+        switch (this->state)
         {
-            switch (this->state)
-            {
-            case Zero:
-            case SomeDigits:
-            case DotDigits:
-            case ExpDigits:
-                return std::strtod(this->s.c_str(), NULL);
-            default:
-                return std::string("Unexpected end of input in JSON number");
-            }
+        case Zero:
+        case SomeDigits:
+        case DotDigits:
+        case ExpDigits:
+            return std::strtod(this->s.c_str(), NULL);
+        default:
+            return std::string("Unexpected end of input in JSON number");
         }
+    }
 
     std::optional<StateTrue> StateTrue::create_if_valid_start(char c)
+    {
+        if (c != MATCH[0])
         {
-            if (c != MATCH[0])
-            {
-                return std::nullopt;
-            }
-            return StateTrue{1};
+            return std::nullopt;
         }
+        return StateTrue{1};
+    }
 
     pda::StateOp<State> StateTrue::transition(const char c)
+    {
+        if (this->matched >= strlen(this->MATCH))
         {
-            if (this->matched >= strlen(this->MATCH))
-            {
-                return pda::Pop{};
-            }
-
-            ++this->matched;
-
-            return pda::Noop{};
+            return pda::Pop{};
         }
+
+        if (this->MATCH[this->matched] != c)
+        {
+            return pda::Reject{std::string("Expected '") + this->MATCH[this->matched] + std::string("' but got '") + c + std::string("'")};
+        }
+
+        ++this->matched;
+
+        return pda::Noop{};
+    }
 
     StateFinalizationResult StateTrue::finalize() const
+    {
+        if (this->matched != strlen(MATCH))
         {
-            if (this->matched != strlen(MATCH))
-            {
-                return std::string("Unexpected end of input in JSON true");
-            }
-
-            return JsonValue(true);
+            return std::string("Unexpected end of input in JSON true");
         }
+
+        return JsonValue(true);
+    }
 
     std::optional<StateFalse> StateFalse::create_if_valid_start(char c)
+    {
+        if (c != MATCH[0])
         {
-            if (c != MATCH[0])
-            {
-                return std::nullopt;
-            }
-            return StateFalse{1};
+            return std::nullopt;
         }
+        return StateFalse{1};
+    }
 
     pda::StateOp<State> StateFalse::transition(const char c)
+    {
+        if (this->matched >= strlen(this->MATCH))
         {
-            if (this->matched >= strlen(this->MATCH))
-            {
-                return pda::Pop{};
-            }
-
-            ++this->matched;
-
-            return pda::Noop{};
+            return pda::Pop{};
         }
+
+        if (this->MATCH[this->matched] != c)
+        {
+            return pda::Reject{std::string("Expected '") + this->MATCH[this->matched] + std::string("' but got '") + c + std::string("'")};
+        }
+
+        ++this->matched;
+
+        return pda::Noop{};
+    }
 
     StateFinalizationResult StateFalse::finalize() const
+    {
+        if (this->matched != strlen(MATCH))
         {
-            if (this->matched != strlen(MATCH))
-            {
-                return std::string("Unexpected end of input in JSON false");
-            }
-
-            return JsonValue(false);
+            return std::string("Unexpected end of input in JSON false");
         }
+
+        return JsonValue(false);
+    }
 
     std::optional<StateNull> StateNull::create_if_valid_start(char c)
+    {
+        if (c != MATCH[0])
         {
-            if (c != MATCH[0])
-            {
-                return std::nullopt;
-            }
-            return StateNull{1};
+            return std::nullopt;
         }
+        return StateNull{1};
+    }
 
     pda::StateOp<State> StateNull::transition(const char c)
+    {
+        if (this->matched >= strlen(this->MATCH))
         {
-            if (this->matched >= strlen(this->MATCH))
-            {
-                return pda::Pop{};
-            }
-
-            ++this->matched;
-
-            return pda::Noop{};
+            return pda::Pop{};
         }
+
+        if (this->MATCH[this->matched] != c)
+        {
+            return pda::Reject{std::string("Expected '") + this->MATCH[this->matched] + std::string("' but got '") + c + std::string("'")};
+        }
+
+        ++this->matched;
+
+        return pda::Noop{};
+    }
 
     StateFinalizationResult StateNull::finalize() const
+    {
+        if (this->matched != strlen(MATCH))
         {
-            if (this->matched != strlen(MATCH))
-            {
-                return std::string("Unexpected end of input in JSON null");
-            }
-
-            return JsonValue(nullptr);
+            return std::string("Unexpected end of input in JSON null");
         }
+
+        return JsonValue(nullptr);
+    }
 
     std::optional<StateString> StateString::create_if_valid_start(char c)
     {
 
-            if (c != '"')
-            {
-                return std::nullopt;
-            }
-            return StateString{std::string()};
+        if (c != '"')
+        {
+            return std::nullopt;
         }
+        return StateString{std::string()};
+    }
 
     pda::StateOp<State> StateString::transition(const char c)
+    {
+        if (this->s.back() == '\\')
         {
-            if (this->s.back() == '\\')
+            if (!(c == '"' || c == '\\' || c == '/' || c == 'b' || c == 'f' || c == 'n' || c == 'r' || c == 't' || c == 'u'))
             {
-                if (!(c == '"' || c == '\\' || c == '/' || c == 'b' || c == 'f' || c == 'n' || c == 'r' || c == 't' || c == 'u'))
-                {
-                    throw std::runtime_error("Invalid escape sequence in JSON string");
-                }
+                throw std::runtime_error("Invalid escape sequence in JSON string");
             }
-            else
-            {
-                auto start_pos = this->s.size() - 6;
-                if (start_pos < 0)
-                {
-                    start_pos = 0;
-                }
-                auto unicode_escaoe = this->s.find("\\u", start_pos);
-                if (unicode_escaoe != std::string::npos && unicode_escaoe >= this->s.size() - 6)
-                {
-                    if (!std::isxdigit(c))
-                    {
-                        throw std::runtime_error("Invalid hex digit in unicode escaped sequence in JSON string");
-                    }
-                }
-                else if (c == '"')
-                {
-                    this->finished = true;
-                    return pda::Pop{false};
-                }
-            }
-
-            this->s.push_back(c);
-
-            return pda::Noop{};
         }
+        else
+        {
+            auto start_pos = this->s.size() - 6;
+            if (start_pos < 0)
+            {
+                start_pos = 0;
+            }
+            auto unicode_escaoe = this->s.find("\\u", start_pos);
+            if (unicode_escaoe != std::string::npos && unicode_escaoe >= this->s.size() - 6)
+            {
+                if (!std::isxdigit(c))
+                {
+                    throw std::runtime_error("Invalid hex digit in unicode escaped sequence in JSON string");
+                }
+            }
+            else if (c == '"')
+            {
+                this->finished = true;
+                return pda::Pop{false};
+            }
+        }
+
+        this->s.push_back(c);
+
+        return pda::Noop{};
+    }
 
     StateFinalizationResult StateString::finalize() const
+    {
+        if (!this->finished)
         {
-            if (!this->finished)
-            {
-                return std::string("Missing closing \" on JSON string");
-            }
-            return JsonValue(this->s);
+            return std::string("Missing closing \" on JSON string");
         }
+        return JsonValue(this->s);
+    }
 
     std::optional<StateArray> StateArray::create_if_valid_start(char c)
+    {
+        if (c != '[')
         {
-            if (c != '[')
-            {
-                return std::nullopt;
-            }
-            return StateArray{};
+            return std::nullopt;
         }
+        return StateArray{};
+    }
 
     pda::StateOp<State> StateArray::transition(const char c)
+    {
+        if (std::isspace(c))
         {
-            if (std::isspace(c))
-            {
-                return pda::Noop{};
-            }
-            else if (c == ']')
-            {
-                this->finished = true;
-                return pda::Pop{false};
-            }
-            else if (this->need_comma)
-            {
-                if (c != ',')
-                {
-                    throw std::runtime_error("Expected comma");
-                }
-                this->need_comma = false;
-                return pda::Noop{};
-            }
-            else
-            {
-                return pda::Push<State>{StateValue{}, true};
-            }
+            return pda::Noop{};
         }
+        else if (c == ']')
+        {
+            this->finished = true;
+            return pda::Pop{false};
+        }
+        else if (this->need_comma)
+        {
+            if (c != ',')
+            {
+                throw std::runtime_error("Expected comma");
+            }
+            this->need_comma = false;
+            return pda::Noop{};
+        }
+        else
+        {
+            return pda::Push<State>{StateValue{}, true};
+        }
+    }
 
     StateFinalizationResult StateArray::finalize() const
+    {
+        if (!this->finished)
         {
-            if (!this->finished)
-            {
-                return std::string("Missing closing ] on JSON array");
-            }
-            return JsonValue(this->values);
+            return std::string("Missing closing ] on JSON array");
         }
+        return JsonValue(this->values);
+    }
 
     std::optional<StateObject> StateObject::create_if_valid_start(char c)
+    {
+        if (c != '{')
         {
-            if (c != '{')
-            {
-                return std::nullopt;
-            }
-            return StateObject{};
+            return std::nullopt;
         }
+        return StateObject{};
+    }
 
     pda::StateOp<State> StateObject::transition(const char c)
+    {
+        if (std::isspace(c))
         {
-            if (std::isspace(c))
-            {
-                return pda::Noop{};
-            }
-            else if (c == '}')
-            {
-                if (this->current_key)
-                {
-                    throw std::runtime_error("JSON object missing value after key");
-                }
-                this->finished = true;
-                return pda::Pop{false};
-            }
-            else if (this->need_comma)
-            {
-                if (c != ',')
-                {
-                    throw std::runtime_error("Expected comma");
-                }
-                this->need_comma = false;
-                return pda::Noop{};
-            }
-            else if (this->current_key)
-            {
-                if (c != ':')
-                {
-                    throw std::runtime_error("Expected colon");
-                }
-                return pda::Push<State>{StateValue{}};
-            }
-            else
-            {
-                auto next = StateString::create_if_valid_start(c);
-                if (!next)
-                {
-                    throw std::runtime_error("Expected start of key");
-                }
-                return pda::Push<State>{next.value()};
-            }
+            return pda::Noop{};
         }
+        else if (c == '}')
+        {
+            if (this->current_key)
+            {
+                throw std::runtime_error("JSON object missing value after key");
+            }
+            this->finished = true;
+            return pda::Pop{false};
+        }
+        else if (this->need_comma)
+        {
+            if (c != ',')
+            {
+                throw std::runtime_error("Expected comma");
+            }
+            this->need_comma = false;
+            return pda::Noop{};
+        }
+        else if (this->current_key)
+        {
+            if (c != ':')
+            {
+                throw std::runtime_error("Expected colon");
+            }
+            return pda::Push<State>{StateValue{}};
+        }
+        else
+        {
+            auto next = StateString::create_if_valid_start(c);
+            if (!next)
+            {
+                throw std::runtime_error("Expected start of key");
+            }
+            return pda::Push<State>{next.value()};
+        }
+    }
 
     StateFinalizationResult StateObject::finalize() const
+    {
+        if (!this->finished)
         {
-            if (!this->finished)
-            {
-                return std::string("Missing closing } on JSON object");
-            }
-            return JsonValue(this->values);
+            return std::string("Missing closing } on JSON object");
+        }
+        return JsonValue(this->values);
     }
 
     struct StatePopOpVisitor
@@ -560,7 +575,7 @@ namespace jsonpp
                 [&](auto value)
                 {
                     state.m_value = value;
-            return std::nullopt;
+                    return std::nullopt;
                 });
         }
 
@@ -569,9 +584,9 @@ namespace jsonpp
             return this->tryFinalizePopped(
                 [&](auto value)
                 {
-            state.values.push_back(value);
-            state.need_comma = true;
-            return std::nullopt;
+                    state.values.push_back(value);
+                    state.need_comma = true;
+                    return std::nullopt;
                 });
         }
 
@@ -580,18 +595,18 @@ namespace jsonpp
             return this->tryFinalizePopped(
                 [&](auto value)
                 {
-            if (state.current_key)
-            {
-                state.values.insert({state.current_key.value(), value});
-                state.current_key = std::nullopt;
-                state.need_comma = true;
-            }
-            else
-            {
-                state.current_key = std::get<std::string>(value.value().value().get());
-            }
+                    if (state.current_key)
+                    {
+                        state.values.insert({state.current_key.value(), value});
+                        state.current_key = std::nullopt;
+                        state.need_comma = true;
+                    }
+                    else
+                    {
+                        state.current_key = std::get<std::string>(value.value().value().get());
+                    }
 
-            return std::nullopt;
+                    return std::nullopt;
                 });
         }
 
