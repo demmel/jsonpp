@@ -183,66 +183,6 @@ namespace jsonpp
         int matched;
     };
 
-    struct StateString
-    {
-        static std::optional<StateString> create_if_valid_start(char c)
-        {
-            if (c != '"')
-            {
-                return std::nullopt;
-            }
-            return StateString{std::string()};
-        }
-
-        StateFinalizationResult finalize() const
-        {
-            return JsonValue(this->s);
-        }
-
-        std::string s;
-    };
-
-    struct StateArray
-    {
-        static std::optional<StateArray> create_if_valid_start(char c)
-        {
-            if (c != '[')
-            {
-                return std::nullopt;
-            }
-            return StateArray{};
-        }
-
-        StateFinalizationResult finalize() const
-        {
-            return JsonValue(this->values);
-        }
-
-        bool need_comma;
-        JsonArray values;
-    };
-
-    struct StateObject
-    {
-        static std::optional<StateObject> create_if_valid_start(char c)
-        {
-            if (c != '{')
-            {
-                return std::nullopt;
-            }
-            return StateObject{};
-        }
-
-        StateFinalizationResult finalize() const
-        {
-            return JsonValue(this->values);
-        }
-
-        std::optional<std::string> current_key;
-        bool need_comma;
-        JsonObject values;
-    };
-
     struct StateNull
     {
         static inline const char *MATCH = "null";
@@ -267,6 +207,81 @@ namespace jsonpp
         }
 
         int matched;
+    };
+
+    struct StateString
+    {
+        static std::optional<StateString> create_if_valid_start(char c)
+        {
+            if (c != '"')
+            {
+                return std::nullopt;
+            }
+            return StateString{std::string()};
+        }
+
+        StateFinalizationResult finalize() const
+        {
+            if (!this->finished)
+            {
+                return std::string("Missing closing \" on JSON string");
+            }
+            return JsonValue(this->s);
+        }
+
+        std::string s;
+        bool finished;
+    };
+
+    struct StateArray
+    {
+        static std::optional<StateArray> create_if_valid_start(char c)
+        {
+            if (c != '[')
+            {
+                return std::nullopt;
+            }
+            return StateArray{};
+        }
+
+        StateFinalizationResult finalize() const
+        {
+            if (!this->finished)
+            {
+                return std::string("Missing closing ] on JSON array");
+            }
+            return JsonValue(this->values);
+        }
+
+        bool need_comma;
+        JsonArray values;
+        bool finished;
+    };
+
+    struct StateObject
+    {
+        static std::optional<StateObject> create_if_valid_start(char c)
+        {
+            if (c != '{')
+            {
+                return std::nullopt;
+            }
+            return StateObject{};
+        }
+
+        StateFinalizationResult finalize() const
+        {
+            if (!this->finished)
+            {
+                return std::string("Missing closing } on JSON object");
+            }
+            return JsonValue(this->values);
+        }
+
+        std::optional<std::string> current_key;
+        bool need_comma;
+        JsonObject values;
+        bool finished;
     };
 
     using State = std::variant<StateValue,
@@ -502,6 +517,7 @@ namespace jsonpp
                 }
                 else if (this->c == '"')
                 {
+                    state.finished = true;
                     return pda::Pop{false};
                 }
             }
@@ -519,6 +535,7 @@ namespace jsonpp
             }
             else if (this->c == ']')
             {
+                state.finished = true;
                 return pda::Pop{false};
             }
             else if (state.need_comma)
@@ -548,6 +565,7 @@ namespace jsonpp
                 {
                     throw std::runtime_error("JSON object missing value after key");
                 }
+                state.finished = true;
                 return pda::Pop{false};
             }
             else if (state.need_comma)
@@ -591,79 +609,6 @@ namespace jsonpp
         }
 
         const char c;
-    };
-
-    struct StateFinalizeVisitor
-    {
-        pda::FinalizeOp operator()(const StateValue &state) const
-        {
-            auto res = state.finalize();
-            auto error = std::get_if<std::string>(&res);
-            if (error)
-            {
-                return pda::Reject{*error};
-            }
-            return pda::PopOrAccept{};
-        }
-
-        pda::FinalizeOp operator()(const StateNumber &state) const
-        {
-            auto res = state.finalize();
-            auto error = std::get_if<std::string>(&res);
-            if (error)
-            {
-                return pda::Reject{*error};
-            }
-            return pda::PopOrAccept{};
-        }
-
-        pda::FinalizeOp operator()(const StateTrue &state) const
-        {
-            auto res = state.finalize();
-            auto error = std::get_if<std::string>(&res);
-            if (error)
-            {
-                return pda::Reject{*error};
-            }
-            return pda::PopOrAccept{};
-        }
-
-        pda::FinalizeOp operator()(const StateFalse &state) const
-        {
-            auto res = state.finalize();
-            auto error = std::get_if<std::string>(&res);
-            if (error)
-            {
-                return pda::Reject{*error};
-            }
-            return pda::PopOrAccept{};
-        }
-
-        pda::FinalizeOp operator()(const StateString &) const
-        {
-            return pda::Reject{"Unexpected end of input in JSON string"};
-        }
-
-        pda::FinalizeOp operator()(const StateArray &) const
-        {
-            return pda::Reject{"Unexpected end of input in JSON array"};
-        }
-
-        pda::FinalizeOp operator()(const StateObject &) const
-        {
-            return pda::Reject{"Unexpected end of input in JSON object"};
-        }
-
-        pda::FinalizeOp operator()(const StateNull &state) const
-        {
-            auto res = state.finalize();
-            auto error = std::get_if<std::string>(&res);
-            if (error)
-            {
-                return pda::Reject{*error};
-            }
-            return pda::PopOrAccept{};
-        }
     };
 
     struct StatePopOpVisitor
@@ -784,7 +729,18 @@ namespace jsonpp
             pda.finalize(
                 [](auto &state)
                 {
-                    return std::visit(StateFinalizeVisitor{}, state);
+                    return std::visit(
+                        [](auto &state) -> pda::FinalizeOp
+                        {
+                            auto res = state.finalize();
+                            auto error = std::get_if<std::string>(&res);
+                            if (error)
+                            {
+                                return pda::Reject{*error};
+                            }
+                            return pda::PopOrAccept{};
+                        },
+                        state);
                 },
                 [](auto &state, auto popped)
                 {
