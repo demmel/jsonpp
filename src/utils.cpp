@@ -1,25 +1,28 @@
 #include "utils.hpp"
 
-std::string join(std::vector<std::string> &elems, char delimiter)
+namespace jsonpp::utils
 {
-    size_t needed = elems.size() - 1; // For the delimiters
-    for (auto &e : elems)
+    std::string join(std::vector<std::string> &elems, char delimiter)
     {
-        needed += e.size(); // For each string
-    }
-
-    std::string s;
-    s.reserve(needed);
-
-    for (size_t i = 0; i < elems.size(); ++i)
-    {
-        auto e = elems[i];
-        s.append(e);
-        if (i != elems.size() - 1)
+        size_t needed = elems.size() - 1; // For the delimiters
+        for (auto &e : elems)
         {
-            s.push_back(delimiter);
+            needed += e.size(); // For each string
         }
-    }
 
-    return s;
+        std::string s;
+        s.reserve(needed);
+
+        for (size_t i = 0; i < elems.size(); ++i)
+        {
+            auto e = elems[i];
+            s.append(e);
+            if (i != elems.size() - 1)
+            {
+                s.push_back(delimiter);
+            }
+        }
+
+        return s;
+    }
 }

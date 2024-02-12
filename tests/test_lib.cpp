@@ -24,7 +24,7 @@ constexpr auto type_name()
     return name;
 }
 
-void assert_value_eq(const JsonValue &actual, const JsonValue &expected);
+void assert_value_eq(const jsonpp::JsonValue &actual, const jsonpp::JsonValue &expected);
 
 struct Visitor
 {
@@ -43,7 +43,7 @@ struct Visitor
         ASSERT_EQ(actual, expected);
     }
 
-    void operator()(const JsonArray &actual, const JsonArray &expected) const
+    void operator()(const jsonpp::JsonArray &actual, const jsonpp::JsonArray &expected) const
     {
         ASSERT_EQ(actual.size(), expected.size());
         for (int i = 0; i < actual.size(); ++i)
@@ -52,7 +52,7 @@ struct Visitor
         }
     }
 
-    void operator()(const JsonObject &actual, const JsonObject &expected) const
+    void operator()(const jsonpp::JsonObject &actual, const jsonpp::JsonObject &expected) const
     {
         ASSERT_EQ(actual.size(), expected.size());
         for (const auto &[key, value] : actual)
@@ -66,16 +66,16 @@ struct Visitor
     template <typename T, typename U>
     void operator()(const T &actual, const U &expected) const
     {
-        FAIL() << "Actual (" << ToJsonVisitor{}(actual) << ") has different type than expected (" << ToJsonVisitor{}(expected) << ")";
+        FAIL() << "Actual (" << jsonpp::ToJsonVisitor{}(actual) << ") has different type than expected (" << jsonpp::ToJsonVisitor{}(expected) << ")";
     }
 };
 
-void assert_variant_eq(const JsonValueVariant &actual, const JsonValueVariant &expected)
+void assert_variant_eq(const jsonpp::JsonValueVariant &actual, const jsonpp::JsonValueVariant &expected)
 {
     std::visit(Visitor{}, actual, expected);
 }
 
-void assert_value_eq(const JsonValue &actual, const JsonValue &expected)
+void assert_value_eq(const jsonpp::JsonValue &actual, const jsonpp::JsonValue &expected)
 {
     auto expected_value = expected.value();
     if (expected_value)
@@ -100,56 +100,56 @@ void assert_value_eq(const JsonValue &actual, const JsonValue &expected)
 
 TEST(LibTest, ParseNull)
 {
-    assert_value_eq(JsonValue::parse(std::string("null")), JsonValue(nullptr));
+    assert_value_eq(jsonpp::JsonValue::parse(std::string("null")), jsonpp::JsonValue(nullptr));
 };
 
 TEST(LibTest, ParseTrue)
 {
-    assert_value_eq(JsonValue::parse(std::string("true")), JsonValue(true));
+    assert_value_eq(jsonpp::JsonValue::parse(std::string("true")), jsonpp::JsonValue(true));
 };
 
 TEST(LibTest, ParseFalse)
 {
-    assert_value_eq(JsonValue::parse(std::string("false")), JsonValue(false));
+    assert_value_eq(jsonpp::JsonValue::parse(std::string("false")), jsonpp::JsonValue(false));
 };
 
 TEST(LibTest, ParseNumber)
 {
-    assert_value_eq(JsonValue::parse(std::string("1234")), JsonValue(1234.));
+    assert_value_eq(jsonpp::JsonValue::parse(std::string("1234")), jsonpp::JsonValue(1234.));
 };
 
 TEST(LibTest, ParseString)
 {
-    assert_value_eq(JsonValue::parse(std::string("\"Hello, world!\"")), JsonValue(std::string("Hello, world!")));
+    assert_value_eq(jsonpp::JsonValue::parse(std::string("\"Hello, world!\"")), jsonpp::JsonValue(std::string("Hello, world!")));
 };
 
 TEST(LibTest, ParseEmptyArray)
 {
-    assert_value_eq(JsonValue::parse(std::string("[]")), JsonValue(std::vector<JsonValue>{}));
+    assert_value_eq(jsonpp::JsonValue::parse(std::string("[]")), jsonpp::JsonValue(std::vector<jsonpp::JsonValue>{}));
 };
 
 TEST(LibTest, ParseEmptyObject)
 {
-    assert_value_eq(JsonValue::parse(std::string("{}")), JsonValue(std::unordered_map<std::string, JsonValue>{}));
+    assert_value_eq(jsonpp::JsonValue::parse(std::string("{}")), jsonpp::JsonValue(std::unordered_map<std::string, jsonpp::JsonValue>{}));
 };
 
 TEST(LibTest, ParseStressTest)
 {
-    assert_value_eq(JsonValue::parse(
+    assert_value_eq(jsonpp::JsonValue::parse(
                         std::string("  {\"a\": {\"b\" : 123   ,  \"c\": \"asd\"}, \
                                 \
                             \"d\": [1,2,3]    \
                             }")),
-                    JsonValue(
+                    jsonpp::JsonValue(
                         {{std::string("a"),
-                          JsonValue(
+                          jsonpp::JsonValue(
                               {{std::string("b"),
-                                JsonValue(123.)},
+                                jsonpp::JsonValue(123.)},
                                {std::string("c"),
-                                JsonValue(std::string("asd"))}})},
+                                jsonpp::JsonValue(std::string("asd"))}})},
                          {std::string("d"),
-                          JsonValue(
-                              {JsonValue(1.),
-                               JsonValue(2.),
-                               JsonValue(3.)})}}));
+                          jsonpp::JsonValue(
+                              {jsonpp::JsonValue(1.),
+                               jsonpp::JsonValue(2.),
+                               jsonpp::JsonValue(3.)})}}));
 };

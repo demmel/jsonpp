@@ -6,99 +6,104 @@
 #include <string>
 #include <optional>
 
-class JsonValue;
-
-/**
- * Represents all possible valid JSON objects.
- */
-using JsonObject = std::unordered_map<std::string, JsonValue>;
-
-/**
- * Represents all possible valid JSON arrays.
- */
-using JsonArray = std::vector<JsonValue>;
-
-/**
- * Represents all possible valid non-null JSON values.
- */
-using JsonValueVariant = std::variant<
-    JsonObject,
-    JsonArray,
-    std::string,
-    double,
-    bool>;
-
-struct ToJsonVisitor
+namespace jsonpp
 {
-    std::string operator()(const JsonObject &o) const;
-    std::string operator()(const JsonArray &a) const;
-    std::string operator()(const std::string &s) const;
-    std::string operator()(const double &d) const;
-    std::string operator()(const bool &b) const;
-};
 
-/**
- * Represents all possible valid JSON values.
- */
-class JsonValue
-{
-public:
-    JsonValue(const JsonObject &v) : m_value(v) {}
-    JsonValue(JsonObject &&v) : m_value(std::move(v)) {}
-
-    JsonValue(const JsonArray &v) : m_value(v) {}
-    JsonValue(JsonArray &&v) : m_value(std::move(v)) {}
-
-    JsonValue(const std::string &v) : m_value(v) {}
-    JsonValue(std::string &&v) : m_value(std::move(v)) {}
-
-    JsonValue(double v) : m_value(v) {}
-    explicit JsonValue(bool v) : m_value(v) {}
-    JsonValue(std::nullptr_t) {}
-
-    template <typename T>
-    JsonValue(T *) = delete;
-
-    JsonValue() = delete;
+    class JsonValue;
 
     /**
-     * Retrieve a reference to the inner value if it exists.
-     *
-     * WARNING: Do not use this reference beyond the lifetime of the JsonValue containing it.
-     * If you want an owned version, copy the value.
-     *
-     * @return a reference to the inner value if it exists.
+     * Represents all possible valid JSON objects.
      */
-    std::optional<std::reference_wrapper<const JsonValueVariant>> value() const
-    {
-        if (!this->m_value)
-        {
-            return std::nullopt;
-        }
-
-        return std::cref(*this->m_value);
-    }
-
-    std::string json() const
-    {
-        if (this->m_value)
-        {
-            return std::visit(ToJsonVisitor{}, this->m_value.value());
-        }
-        else
-        {
-            return "null";
-        }
-    }
+    using JsonObject = std::unordered_map<std::string, JsonValue>;
 
     /**
-     * Creates a JsonValue from a string containing valid JSON.
-     *
-     * @param json_str std::string containing valid JSON.
-     * @return JsonValue containing that parsed JSON from json_str.
+     * Represents all possible valid JSON arrays.
      */
-    static JsonValue parse(const std::string_view json_str);
+    using JsonArray = std::vector<JsonValue>;
 
-private:
-    std::optional<JsonValueVariant> m_value;
-};
+    /**
+     * Represents all possible valid non-null JSON values.
+     */
+    using JsonValueVariant = std::variant<
+        JsonObject,
+        JsonArray,
+        std::string,
+        double,
+        bool>;
+
+    struct ToJsonVisitor
+    {
+        std::string operator()(const JsonObject &o) const;
+        std::string operator()(const JsonArray &a) const;
+        std::string operator()(const std::string &s) const;
+        std::string operator()(const double &d) const;
+        std::string operator()(const bool &b) const;
+    };
+
+    /**
+     * Represents all possible valid JSON values.
+     */
+    class JsonValue
+    {
+    public:
+        JsonValue(const JsonObject &v) : m_value(v) {}
+        JsonValue(JsonObject &&v) : m_value(std::move(v)) {}
+
+        JsonValue(const JsonArray &v) : m_value(v) {}
+        JsonValue(JsonArray &&v) : m_value(std::move(v)) {}
+
+        JsonValue(const std::string &v) : m_value(v) {}
+        JsonValue(std::string &&v) : m_value(std::move(v)) {}
+
+        JsonValue(double v) : m_value(v) {}
+        explicit JsonValue(bool v) : m_value(v) {}
+        JsonValue(std::nullptr_t) {}
+
+        template <typename T>
+        JsonValue(T *) = delete;
+
+        JsonValue() = delete;
+
+        /**
+         * Retrieve a reference to the inner value if it exists.
+         *
+         * WARNING: Do not use this reference beyond the lifetime of the JsonValue containing it.
+         * If you want an owned version, copy the value.
+         *
+         * @return a reference to the inner value if it exists.
+         */
+        std::optional<std::reference_wrapper<const JsonValueVariant>> value() const
+        {
+            if (!this->m_value)
+            {
+                return std::nullopt;
+            }
+
+            return std::cref(*this->m_value);
+        }
+
+        std::string json() const
+        {
+            if (this->m_value)
+            {
+                return std::visit(ToJsonVisitor{}, this->m_value.value());
+            }
+            else
+            {
+                return "null";
+            }
+        }
+
+        /**
+         * Creates a JsonValue from a string containing valid JSON.
+         *
+         * @param json_str std::string containing valid JSON.
+         * @return JsonValue containing that parsed JSON from json_str.
+         */
+        static JsonValue parse(const std::string_view json_str);
+
+    private:
+        std::optional<JsonValueVariant> m_value;
+    };
+
+}
