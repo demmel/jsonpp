@@ -12,23 +12,29 @@
 
 namespace jsonpp
 {
+    enum StateExactType
+    {
+        True,
+        False,
+        Null,
+    };
+
     struct StateValue;
     struct StateNumber;
-    struct StateTrue;
-    struct StateFalse;
+    template <StateExactType ExactType>
+    struct StateExact;
     struct StateString;
     struct StateArray;
     struct StateObject;
-    struct StateNull;
 
     using State = std::variant<StateValue,
                                StateNumber,
-                               StateTrue,
-                               StateFalse,
+                               StateExact<True>,
+                               StateExact<False>,
+                               StateExact<Null>,
                                StateString,
                                StateArray,
-                               StateObject,
-                               StateNull>;
+                               StateObject>;
 
     using StateFinalizationResult = std::variant<JsonValue, std::string>;
 
@@ -62,33 +68,25 @@ namespace jsonpp
         std::string s;
     };
 
-    struct StateTrue
+    template <StateExactType ExactType>
+    struct StateExact
     {
-        static inline const char *MATCH = "true";
+        static constexpr const char *match()
+        {
+            switch (ExactType)
+            {
+            case True:
+                return "true";
+            case False:
+                return "false";
+            case Null:
+                return "null";
+            }
 
-        static std::optional<StateTrue> create_if_valid_start(char c);
-        pda::StateOp<State> transition(const char c);
-        StateFinalizationResult finalize() const;
+            return "";
+        }
 
-        int matched;
-    };
-
-    struct StateFalse
-    {
-        static inline const char *MATCH = "false";
-
-        static std::optional<StateFalse> create_if_valid_start(char c);
-        pda::StateOp<State> transition(const char c);
-        StateFinalizationResult finalize() const;
-
-        int matched;
-    };
-
-    struct StateNull
-    {
-        static inline const char *MATCH = "null";
-
-        static std::optional<StateNull> create_if_valid_start(char c);
+        static constexpr std::optional<StateExact<ExactType>> create_if_valid_start(char c);
         pda::StateOp<State> transition(const char c);
         StateFinalizationResult finalize() const;
 
@@ -128,12 +126,4 @@ namespace jsonpp
         bool finished;
     };
 
-    using State = std::variant<StateValue,
-                               StateNumber,
-                               StateTrue,
-                               StateFalse,
-                               StateString,
-                               StateArray,
-                               StateObject,
-                               StateNull>;
 }

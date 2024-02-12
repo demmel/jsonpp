@@ -96,7 +96,7 @@ namespace jsonpp
         }
 
         if (auto new_state = tryCreateState<
-                StateString, StateNumber, StateTrue, StateFalse, StateNull, StateObject, StateArray>(c))
+                StateString, StateNumber, StateExact<True>, StateExact<False>, StateExact<Null>, StateObject, StateArray>(c))
         {
             return pda::Push<State>{
                 std::visit([](auto &&s) -> State
@@ -281,25 +281,27 @@ namespace jsonpp
         }
     }
 
-    std::optional<StateTrue> StateTrue::create_if_valid_start(char c)
+    template <StateExactType ExactType>
+    constexpr std::optional<StateExact<ExactType>> StateExact<ExactType>::create_if_valid_start(char c)
     {
-        if (c != MATCH[0])
+        if (c != match()[0])
         {
             return std::nullopt;
         }
-        return StateTrue{1};
+        return StateExact<ExactType>{1};
     }
 
-    pda::StateOp<State> StateTrue::transition(const char c)
+    template <StateExactType ExactType>
+    pda::StateOp<State> StateExact<ExactType>::transition(const char c)
     {
-        if (this->matched >= strlen(this->MATCH))
+        if (this->matched >= strlen(this->match()))
         {
             return pda::Pop{};
         }
 
-        if (this->MATCH[this->matched] != c)
+        if (this->match()[this->matched] != c)
         {
-            return pda::Reject{std::string("Expected '") + this->MATCH[this->matched] + std::string("' but got '") + c + std::string("'")};
+            return pda::Reject{std::string("Expected '") + this->match()[this->matched] + std::string("' but got '") + c + std::string("'")};
         }
 
         ++this->matched;
@@ -307,86 +309,25 @@ namespace jsonpp
         return pda::Noop{};
     }
 
-    StateFinalizationResult StateTrue::finalize() const
+    template <StateExactType ExactType>
+    StateFinalizationResult StateExact<ExactType>::finalize() const
     {
-        if (this->matched != strlen(MATCH))
+        if (this->matched != strlen(this->match()))
         {
-            return std::string("Unexpected end of input in JSON true");
+            return std::string("Unexpected end of input in JSON ") + this->match();
         }
 
-        return JsonValue(true);
-    }
-
-    std::optional<StateFalse> StateFalse::create_if_valid_start(char c)
-    {
-        if (c != MATCH[0])
+        switch (ExactType)
         {
-            return std::nullopt;
-        }
-        return StateFalse{1};
-    }
-
-    pda::StateOp<State> StateFalse::transition(const char c)
-    {
-        if (this->matched >= strlen(this->MATCH))
-        {
-            return pda::Pop{};
+        case True:
+            return JsonValue(true);
+        case False:
+            return JsonValue(false);
+        case Null:
+            return JsonValue(nullptr);
         }
 
-        if (this->MATCH[this->matched] != c)
-        {
-            return pda::Reject{std::string("Expected '") + this->MATCH[this->matched] + std::string("' but got '") + c + std::string("'")};
-        }
-
-        ++this->matched;
-
-        return pda::Noop{};
-    }
-
-    StateFinalizationResult StateFalse::finalize() const
-    {
-        if (this->matched != strlen(MATCH))
-        {
-            return std::string("Unexpected end of input in JSON false");
-        }
-
-        return JsonValue(false);
-    }
-
-    std::optional<StateNull> StateNull::create_if_valid_start(char c)
-    {
-        if (c != MATCH[0])
-        {
-            return std::nullopt;
-        }
-        return StateNull{1};
-    }
-
-    pda::StateOp<State> StateNull::transition(const char c)
-    {
-        if (this->matched >= strlen(this->MATCH))
-        {
-            return pda::Pop{};
-        }
-
-        if (this->MATCH[this->matched] != c)
-        {
-            return pda::Reject{std::string("Expected '") + this->MATCH[this->matched] + std::string("' but got '") + c + std::string("'")};
-        }
-
-        ++this->matched;
-
-        return pda::Noop{};
-    }
-
-    StateFinalizationResult StateNull::finalize() const
-    {
-        if (this->matched != strlen(MATCH))
-        {
-            return std::string("Unexpected end of input in JSON null");
-        }
-
-        return JsonValue(nullptr);
+        return std::string("Unhandled StateExact in finalize");
     }
 
     std::optional<StateString> StateString::create_if_valid_start(char c)
